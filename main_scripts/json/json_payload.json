@@ -1,0 +1,41 @@
+{
+    "user": {
+      "id": 123,
+      "name": "John",
+      "email": "john@example.com",
+      "is_active": true,
+      "address": {
+        "street": "456 Elm St",
+        "city": "Metropolis",
+        "country": "USA"
+      },
+      "orders": [
+        {
+          "order_id": "ABC123",
+          "total": 50.75,
+          "items": [
+            {
+              "product": "Widget",
+              "quantity": 2
+            },
+            {
+              "product": "Gadget",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "order_id": "XYZ456",
+          "total": 100.25,
+          "items": []
+        }
+      ]
+    },
+    "settings": {
+      "notifications": {
+        "email": true,
+        "sms": false
+      },
+      "language": "en_US"
+    }
+}
