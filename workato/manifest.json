@@ -1,0 +1,26 @@
+{
+  "package_name": "party-house-integrations",
+  "version": "1.0.0",
+  "description": "Workato integration recipes managed as code via Claude Code",
+  "workato_schema_version": "1.0",
+  "recipes": [
+    {
+      "path": "recipes/webhook_to_slack.recipe.yaml",
+      "id": "webhook-to-slack"
+    },
+    {
+      "path": "recipes/salesforce_to_db_sync.recipe.yaml",
+      "id": "salesforce-to-db-sync"
+    },
+    {
+      "path": "recipes/scheduled_api_poller.recipe.yaml",
+      "id": "scheduled-api-poller"
+    }
+  ],
+  "connections": [
+    {
+      "path": "connections/connections.yaml"
+    }
+  ],
+  "custom_connectors": []
+}

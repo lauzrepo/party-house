@@ -1,0 +1,104 @@
+# scheduled_api_poller.recipe.yaml
+#
+# Recipe: Scheduled REST API Poller → Database Ingestion
+# Trigger:  Workato Scheduler (every 15 minutes)
+# Actions:  HTTP GET paginated API → Loop each record → Upsert into PostgreSQL
+#
+# Use-case: Pull data from any REST API that lacks webhook support (legacy
+#           systems, third-party SaaS without event streaming, etc.) and
+#           land it into the warehouse on a cadence.
+
+recipe:
+  name: "Scheduled API Poller → PostgreSQL Ingestion"
+  description: >
+    Runs on a 15-minute schedule. Calls a paginated REST API, iterates over
+    every record in the response, and upserts each row into PostgreSQL.
+    Designed to be adapted for any JSON REST API — just update the endpoint
+    URL, authentication headers, field mappings, and target table.
+  version: 1
+  active: true
+
+  trigger:
+    provider: workato
+    name: scheduled_trigger
+    connection: ~
+    input:
+      # Cron-like schedule; Workato supports "every N minutes/hours" or full cron.
+      interval: 15
+      interval_unit: minutes
+      start_time: "2024-01-01T00:00:00Z"
+    output_fields:
+      - name: scheduled_time
+        type: date_time
+
+  steps:
+    - step_id: 1
+      type: action
+      provider: http
+      name: request
+      connection: http_generic
+      description: "Fetch records from external REST API (page 1)"
+      input:
+        method: GET
+        url: "https://api.example.com/v1/records"
+        headers:
+          Authorization: "Bearer {{env.API_TOKEN}}"
+          Accept: "application/json"
+        params:
+          page: 1
+          per_page: 100
+          updated_since: "{{trigger.scheduled_time | date_add: -15, 'minutes' | date: '%Y-%m-%dT%H:%M:%SZ'}}"
+        response_type: json
+      output_fields:
+        - name: data
+          type: array
+          properties:
+            - name: id
+              type: string
+            - name: external_id
+              type: string
+            - name: name
+              type: string
+            - name: status
+              type: string
+            - name: value
+              type: number
+            - name: metadata
+              type: object
+            - name: updated_at
+              type: date_time
+        - name: meta
+          type: object
+          properties:
+            - name: total_count
+              type: integer
+            - name: page
+              type: integer
+            - name: total_pages
+              type: integer
+
+    - step_id: 2
+      type: foreach
+      description: "Loop over each record returned from the API"
+      input:
+        list: "{{step_1.data}}"
+        batch_size: 10   # Process in batches to respect Workato rate limits
+      steps:
+        - step_id: 3
+          type: action
+          provider: postgresql
+          name: upsert_row
+          connection: postgres_warehouse
+          description: "Upsert individual record into staging table"
+          input:
+            table: public.api_records_staging
+            upsert_key: external_id
+            row:
+              external_id:   "{{foreach.id}}"
+              name:          "{{foreach.name}}"
+              status:        "{{foreach.status}}"
+              value:         "{{foreach.value}}"
+              raw_metadata:  "{{foreach.metadata | to_json}}"
+              source_api:    "example.com"
+              polled_at:     "{{trigger.scheduled_time}}"
+              source_updated_at: "{{foreach.updated_at}}"

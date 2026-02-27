@@ -1,0 +1,126 @@
+# salesforce_to_db_sync.recipe.yaml
+#
+# Recipe: Salesforce Opportunity → PostgreSQL Warehouse Sync
+# Trigger:  New or updated Opportunity in Salesforce
+# Actions:  Map fields → Upsert into PostgreSQL opportunities table
+#
+# Use-case: Keeps a read-optimised analytics warehouse in sync with the CRM
+#           in near-real-time without a nightly batch job.
+
+recipe:
+  name: "Salesforce Opportunity → PostgreSQL Sync"
+  description: >
+    Triggers whenever a Salesforce Opportunity is created or updated.
+    Transforms and upserts the record into the `opportunities` table in
+    the PostgreSQL data warehouse so BI tools always have fresh data.
+  version: 1
+  active: true
+
+  trigger:
+    provider: salesforce
+    name: new_updated_object
+    connection: salesforce_crm
+    input:
+      sobject: Opportunity
+      # Poll every 5 minutes for changes; Workato uses the SystemModstamp field.
+      since: "1970-01-01T00:00:00Z"
+      columns:
+        - Id
+        - Name
+        - StageName
+        - Amount
+        - CloseDate
+        - AccountId
+        - Account.Name
+        - OwnerId
+        - Owner.Name
+        - Probability
+        - Type
+        - LeadSource
+        - CreatedDate
+        - LastModifiedDate
+    output_fields:
+      - name: Id
+        type: string
+      - name: Name
+        type: string
+      - name: StageName
+        type: string
+      - name: Amount
+        type: number
+      - name: CloseDate
+        type: date
+      - name: AccountId
+        type: string
+      - name: Account__Name
+        type: string
+        label: "Account Name"
+      - name: OwnerId
+        type: string
+      - name: Owner__Name
+        type: string
+        label: "Owner Name"
+      - name: Probability
+        type: number
+      - name: Type
+        type: string
+      - name: LeadSource
+        type: string
+      - name: CreatedDate
+        type: date_time
+      - name: LastModifiedDate
+        type: date_time
+
+  steps:
+    - step_id: 1
+      type: action
+      provider: postgresql
+      name: upsert_row
+      connection: postgres_warehouse
+      description: "Upsert opportunity record into data warehouse"
+      input:
+        table: public.opportunities
+        upsert_key: sf_opportunity_id   # Unique index column in Postgres
+        row:
+          sf_opportunity_id:   "{{trigger.Id}}"
+          name:                "{{trigger.Name}}"
+          stage:               "{{trigger.StageName}}"
+          amount:              "{{trigger.Amount}}"
+          close_date:          "{{trigger.CloseDate}}"
+          sf_account_id:       "{{trigger.AccountId}}"
+          account_name:        "{{trigger.Account__Name}}"
+          sf_owner_id:         "{{trigger.OwnerId}}"
+          owner_name:          "{{trigger.Owner__Name}}"
+          probability:         "{{trigger.Probability}}"
+          opportunity_type:    "{{trigger.Type}}"
+          lead_source:         "{{trigger.LeadSource}}"
+          sf_created_at:       "{{trigger.CreatedDate}}"
+          sf_updated_at:       "{{trigger.LastModifiedDate}}"
+          synced_at:           "{{now}}"
+
+    - step_id: 2
+      type: if
+      description: "Alert on closed-won deals over $50k"
+      condition:
+        all:
+          - operand_1: "{{trigger.StageName}}"
+            operator: equals
+            operand_2: "Closed Won"
+          - operand_1: "{{trigger.Amount}}"
+            operator: greater_than
+            operand_2: 50000
+      on_true:
+        - step_id: 3
+          type: action
+          provider: slack
+          name: post_message
+          connection: slack_workspace
+          description: "Celebrate big wins in #sales"
+          input:
+            channel_type: channel
+            channel: "#sales"
+            message: >
+              :trophy: *Closed Won!* {{trigger.Name}} — ${{trigger.Amount | number_to_currency}}
+              > Account: {{trigger.Account__Name}}
+              > Owner: {{trigger.Owner__Name}}
+              > Close Date: {{trigger.CloseDate}}

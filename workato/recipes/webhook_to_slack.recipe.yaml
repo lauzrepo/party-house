@@ -1,0 +1,81 @@
+# webhook_to_slack.recipe.yaml
+#
+# Recipe: Incoming Webhook → Slack Notification
+# Trigger:  HTTP webhook (POST /webhook/receive)
+# Actions:  Parse payload → Conditional routing → Post to Slack channel
+#
+# Use-case: Any external system (GitHub, Jira, PagerDuty, etc.) posts an event
+#           to Workato. This recipe parses the body and fans it out to the right
+#           Slack channel based on severity or type.
+
+recipe:
+  name: "Webhook to Slack Notification"
+  description: >
+    Receives an inbound HTTP webhook, extracts key fields from the JSON body,
+    and posts a formatted message to a Slack channel. Routes to #alerts for
+    high-severity events and #general-notifications otherwise.
+  version: 1
+  active: true
+
+  trigger:
+    provider: workato
+    name: new_webhook_payload
+    connection: ~          # Workato-native, no external connection needed
+    input:
+      path: "party-house/events"   # Webhook URL suffix; full URL shown in Workato UI
+      payload_type: json
+    output_fields:
+      - name: event_type
+        type: string
+      - name: severity
+        type: string
+      - name: message
+        type: string
+      - name: source_system
+        type: string
+      - name: occurred_at
+        type: date_time
+
+  steps:
+    - step_id: 1
+      type: if
+      description: "Route based on severity"
+      condition:
+        operand_1: "{{trigger.severity}}"
+        operator: equals
+        operand_2: "high"
+      on_true:
+        - step_id: 2
+          type: action
+          provider: slack
+          name: post_message
+          connection: slack_workspace
+          description: "Post high-severity alert to #alerts"
+          input:
+            channel_type: channel
+            channel: "#alerts"
+            message: >
+              :red_circle: *[HIGH] {{trigger.event_type}}* — `{{trigger.source_system}}`
+              > {{trigger.message}}
+              _Occurred at: {{trigger.occurred_at | date: "%Y-%m-%d %H:%M UTC"}}_
+            as_user: false
+            username: "Workato Alerter"
+            icon_emoji: ":robot_face:"
+
+      on_false:
+        - step_id: 3
+          type: action
+          provider: slack
+          name: post_message
+          connection: slack_workspace
+          description: "Post standard notification to #general-notifications"
+          input:
+            channel_type: channel
+            channel: "#general-notifications"
+            message: >
+              :white_circle: *{{trigger.event_type}}* — `{{trigger.source_system}}`
+              > {{trigger.message}}
+              _Occurred at: {{trigger.occurred_at | date: "%Y-%m-%d %H:%M UTC"}}_
+            as_user: false
+            username: "Workato Notifier"
+            icon_emoji: ":robot_face:"

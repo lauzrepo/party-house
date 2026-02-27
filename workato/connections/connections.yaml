@@ -1,0 +1,38 @@
+# connections.yaml
+# Defines named connection slots used by recipes.
+# Actual credentials are managed in Workato UI or injected at deploy time via
+# the WORKATO_CONNECTION_* environment variables — never committed to git.
+#
+# Format:
+#   Each entry maps a logical connection name (used in recipes) to a provider
+#   and an optional environment tag so the deploy script can wire up the right
+#   connection ID per environment.
+
+connections:
+  - name: slack_workspace
+    provider: slack
+    description: "Company Slack workspace"
+    environments:
+      dev: "${WORKATO_CONN_SLACK_DEV}"
+      prod: "${WORKATO_CONN_SLACK_PROD}"
+
+  - name: salesforce_crm
+    provider: salesforce
+    description: "Production Salesforce org"
+    environments:
+      dev: "${WORKATO_CONN_SF_DEV}"
+      prod: "${WORKATO_CONN_SF_PROD}"
+
+  - name: postgres_warehouse
+    provider: postgresql
+    description: "Analytics data warehouse"
+    environments:
+      dev: "${WORKATO_CONN_PG_DEV}"
+      prod: "${WORKATO_CONN_PG_PROD}"
+
+  - name: http_generic
+    provider: http
+    description: "Generic HTTP connector for REST APIs"
+    environments:
+      dev: "${WORKATO_CONN_HTTP_DEV}"
+      prod: "${WORKATO_CONN_HTTP_PROD}"
